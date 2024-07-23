@@ -1,0 +1,53 @@
+name: Daily Repository Check
+
+on:
+  push:
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC
+
+jobs:
+  check-repo:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install Git
+      run: apt-get update && apt-get install -y git
+
+    - name: Checkout this repository
+      uses: actions/checkout@v2
+
+    - name: Clone the target repository
+      run: |
+        git clone https://github.com/jaiarobotics/jaiabot.git
+
+    - name: Compare critical files
+      id: compare_files
+      run: |
+        # Define critical files to check
+        critical_files=$(find expected -type f)
+
+        # Initialize result variable and mismatched files array
+        result=0
+        mismatched_files=()
+
+        for file in $critical_files; do
+          if ! diff -q "$file" "${file#expected/}"; then
+            result=1
+            mismatched_files+=("$file")
+          fi
+        done
+
+        # Output the mismatched files
+        echo "::set-output name=files_match::$( [ $result -eq 0 ] && echo true || echo false )"
+        echo "::set-output name=mismatched_files::${mismatched_files[*]}"
+
+    - name: Report result
+      run: |
+        if [ "${{ steps.compare_files.outputs.files_match }}" == "false" ]; then
+          echo "Some critical files do not match!"
+          echo "Mismatched files: ${{ steps.compare_files.outputs.mismatched_files }}"
+          exit 1
+        else
+          echo "All critical files match."
+        fi
+        
